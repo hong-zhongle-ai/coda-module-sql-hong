@@ -59,14 +59,15 @@ Les types de données définissent **ce qu'on peut stocker** dans une colonne.
 |------|-------------|---------|
 | `INTEGER` ou `INT` | Nombres entiers | 42, -10, 2024 |
 | `SERIAL` | Entier auto-incrémenté | 1, 2, 3, 4... |
-| `NUMERIC(p,s)` | Nombres décimaux précis | 15.75, 18.50 |
+| `NUMERIC(p,s)` | Nombres décimaux précis<br/>p = précision totale, s = décimales | 15.75, 18.50 |
 | `REAL` / `FLOAT` | Nombres à virgule flottante | 3.14159 |
 
 **Exemple d'usage** :
 ```sql
 id_etudiant SERIAL          -- 1, 2, 3, 4...
 id_etablissement INT        -- 1, 2, 3...
-valeur NUMERIC(5,2)        -- 15.75 (5 chiffres, 2 décimales)
+valeur NUMERIC(5,2)        -- 15.75 (5 chiffres au total, 2 après la virgule)
+                           -- Permet: 0.00 à 999.99 (3 chiffres avant, 2 après)
 ```
 
 ---
@@ -98,7 +99,8 @@ adresse TEXT               -- Texte long sans limite
 | `DATE` | Date (année-mois-jour) | 2001-05-12 |
 | `TIME` | Heure (heure:minute:seconde) | 14:30:00 |
 | `TIMESTAMP` | Date + heure | 2024-11-19 14:30:00 |
-| `BOOLEAN` | Vrai ou faux | TRUE, FALSE |
+
+
 
 **Exemple d'usage** :
 ```sql
@@ -106,6 +108,8 @@ date_naissance DATE        -- 2001-05-12
 date_inscription DATE      -- 2024-09-01
 date_note DATE            -- 2024-10-15
 ```
+## Other
+| `BOOLEAN` | Vrai ou faux | TRUE, FALSE |
 
 ---
 
@@ -327,6 +331,23 @@ CREATE TABLE student.cours (
 
 **Résultat** : Clé primaire qui s'incrémente automatiquement
 
+> 🔍 **Sous le capot : Ce que PostgreSQL génère réellement**
+> 
+> Quand vous écrivez `SERIAL`, PostgreSQL crée automatiquement :
+> 
+> ```sql
+> id_cours integer NOT NULL DEFAULT nextval('student.cours_id_cours_seq'::regclass)
+> ```
+> 
+> **Décortiquons cette syntaxe** :
+> - `integer` : Type de base (entier)
+> - `NOT NULL` : La valeur ne peut pas être vide
+> - `DEFAULT nextval(...)` : Valeur par défaut = prochaine valeur de la séquence
+> - `'student.cours_id_cours_seq'` : Nom de la séquence auto-générée
+> - `::regclass` : Cast PostgreSQL pour référencer un objet système
+> 
+> **En résumé** : `SERIAL` est un **raccourci** qui crée automatiquement une séquence et l'utilise comme valeur par défaut. C'est plus simple à écrire que la syntaxe complète !
+
 ---
 
 ## 3️⃣ titre VARCHAR(255) NOT NULL
@@ -359,6 +380,171 @@ CREATE TABLE student.cours (
 
 ---
 
+## 🔍 Syntaxe PostgreSQL complète : Ce que vous voyez dans pgAdmin
+
+Quand vous regardez la définition d'une table dans pgAdmin ou avec `\d+`, PostgreSQL affiche la syntaxe complète :
+
+```sql
+id_cours integer NOT NULL DEFAULT nextval('student.cours_id_cours_seq'::regclass),
+titre character varying(255) COLLATE pg_catalog."default" NOT NULL,
+categorie character varying(100) COLLATE pg_catalog."default" NOT NULL,
+CONSTRAINT cours_pkey PRIMARY KEY (id_cours)
+```
+
+### Décortiquons chaque partie :
+
+#### 1️⃣ `id_cours integer NOT NULL DEFAULT nextval(...)`
+- `integer` : Type entier (équivalent à `INT`)
+- `NOT NULL` : La valeur est obligatoire
+- `DEFAULT nextval(...)` : Valeur par défaut = prochaine valeur de la séquence
+- `'student.cours_id_cours_seq'` : Nom de la séquence créée automatiquement par `SERIAL`
+- `::regclass` : Cast PostgreSQL pour référencer un objet système (la séquence)
+
+> 💡 **En écriture simple** : `id_cours SERIAL PRIMARY KEY`
+
+#### 2️⃣ `titre character varying(255) COLLATE pg_catalog."default" NOT NULL`
+- `character varying(255)` : Équivalent à `VARCHAR(255)` (texte variable, max 255 caractères)
+- `COLLATE pg_catalog."default"` : Règles de tri et comparaison par défaut
+  - **`COLLATE`** = "collation" en français = règles qui définissent comment les caractères sont :
+    - **Comparés** : `'a' = 'A'` ? (selon la collation)
+    - **Triés** : `'a'` vient avant `'b'` ? (ordre alphabétique)
+    - **Classés** : Comment gérer les accents (`é` vs `e`) ?
+  - **`pg_catalog."default"`** = règles par défaut du système PostgreSQL
+    - Généralement basé sur la locale du système (français, anglais, etc.)
+    - `pg_catalog` = schéma système de PostgreSQL
+    - `"default"` = collation par défaut
+  - **En pratique** : Vous pouvez ignorer cette partie dans 99% des cas
+    - PostgreSQL l'ajoute automatiquement
+    - Vous n'avez pas besoin de l'écrire dans vos CREATE TABLE
+- `NOT NULL` : La valeur est obligatoire
+
+> 💡 **En écriture simple** : `titre VARCHAR(255) NOT NULL`
+
+> 🔍 **Exemple concret de COLLATE** :
+> 
+> Avec `COLLATE "fr_FR"` (français) :
+> ```sql
+> SELECT * FROM cours ORDER BY titre;
+> -- Résultat : "École" vient avant "Zoo" (les accents sont pris en compte)
+> ```
+> 
+> Avec `COLLATE "C"` (ASCII simple) :
+> ```sql
+> SELECT * FROM cours ORDER BY titre;
+> -- Résultat : "Zoo" vient avant "École" (les caractères accentués sont triés différemment)
+> ```
+> 
+> **`pg_catalog."default"`** utilise généralement les règles de votre système, ce qui convient dans la plupart des cas.
+
+#### 3️⃣ `categorie character varying(100) COLLATE pg_catalog."default" NOT NULL`
+- Même principe que `titre`, mais avec une limite de 100 caractères
+
+> 💡 **En écriture simple** : `categorie VARCHAR(100) NOT NULL`
+
+#### 4️⃣ `CONSTRAINT cours_pkey PRIMARY KEY (id_cours)`
+- `CONSTRAINT cours_pkey` : Nom explicite de la contrainte (généré automatiquement)
+  - Format : `nom_table_pkey` (ici `cours_pkey`)
+- `PRIMARY KEY (id_cours)` : Définit `id_cours` comme clé primaire
+
+> 💡 **En écriture simple** : `id_cours SERIAL PRIMARY KEY` (définit tout en une ligne)
+
+### 📝 Résumé : Syntaxe simple vs Syntaxe PostgreSQL
+
+| Ce que vous écrivez | Ce que PostgreSQL génère |
+|---------------------|---------------------------|
+| `id_cours SERIAL PRIMARY KEY` | `id_cours integer NOT NULL DEFAULT nextval(...), CONSTRAINT cours_pkey PRIMARY KEY (id_cours)` |
+| `titre VARCHAR(255) NOT NULL` | `titre character varying(255) COLLATE pg_catalog."default" NOT NULL` |
+| `categorie VARCHAR(100) NOT NULL` | `categorie character varying(100) COLLATE pg_catalog."default" NOT NULL` |
+
+**Conclusion** : Utilisez la syntaxe simple (`SERIAL`, `VARCHAR`) dans vos scripts SQL. La syntaxe complète est affichée par PostgreSQL pour information, mais vous n'avez pas besoin de l'écrire manuellement !
+
+---
+
+## 🌍 COLLATE : Qu'est-ce que c'est et à quoi ça sert ?
+
+### Définition
+
+**COLLATE** (collation en français) définit les **règles de comparaison et de tri** des chaînes de caractères. C'est important pour :
+
+1. **Le tri** (`ORDER BY`) : Comment ordonner les textes ?
+2. **La comparaison** (`WHERE`, `=`, `<`, `>`) : Comment comparer les textes ?
+3. **La recherche** (`LIKE`, `ILIKE`) : Comment chercher dans les textes ?
+
+### Exemples concrets
+
+#### Exemple 1 : Tri avec accents
+
+```sql
+-- Données de test
+CREATE TABLE test (nom VARCHAR(50));
+INSERT INTO test VALUES ('École'), ('Zoo'), ('école'), ('zoo');
+
+-- Avec COLLATE français (fr_FR)
+SELECT * FROM test ORDER BY nom COLLATE "fr_FR";
+-- Résultat : École, Zoo, école, zoo
+-- (Les majuscules avant les minuscules, les accents respectés)
+
+-- Avec COLLATE C (ASCII simple)
+SELECT * FROM test ORDER BY nom COLLATE "C";
+-- Résultat : Zoo, zoo, École, école
+-- (Ordre ASCII : Z < e < é)
+```
+
+#### Exemple 2 : Comparaison insensible à la casse
+
+```sql
+-- Avec COLLATE par défaut (sensible à la casse)
+SELECT * FROM cours WHERE titre = 'introduction';
+-- Ne trouve pas "Introduction" (I majuscule)
+
+-- Avec COLLATE insensible à la casse
+SELECT * FROM cours WHERE titre COLLATE "en_US" = 'introduction';
+-- Trouve "Introduction" (selon la collation)
+```
+
+### `pg_catalog."default"` : Qu'est-ce que c'est ?
+
+- **`pg_catalog`** = schéma système de PostgreSQL (contient les objets internes)
+- **`"default"`** = collation par défaut du système
+- **Résultat** : Utilise les règles de tri/comparaison de votre système d'exploitation
+
+**En pratique** :
+- Sur un système français : règles françaises (accents, casse)
+- Sur un système anglais : règles anglaises (ASCII)
+- Généralement : **vous n'avez pas besoin de vous en préoccuper**
+
+### Quand utiliser COLLATE explicitement ?
+
+**Cas où vous devez spécifier COLLATE** :
+
+1. **Base de données multilingue** : Données en français ET en arabe
+2. **Tri spécifique** : Besoin d'un tri particulier (ex: tri numérique dans du texte)
+3. **Compatibilité** : Migration depuis un autre SGBD avec des règles différentes
+
+**Exemple** :
+```sql
+-- Créer une colonne avec une collation spécifique
+CREATE TABLE produits (
+    nom VARCHAR(100) COLLATE "fr_FR" NOT NULL
+);
+
+-- Ou utiliser COLLATE dans une requête
+SELECT * FROM cours 
+ORDER BY titre COLLATE "C";
+```
+
+### 📝 Résumé
+
+| Concept | Signification | À retenir |
+|---------|---------------|-----------|
+| **COLLATE** | Règles de tri et comparaison | Définit comment les textes sont comparés/triés |
+| **`pg_catalog."default"`** | Collation par défaut du système | Généralement français ou anglais selon votre OS |
+| **En pratique** | PostgreSQL l'ajoute automatiquement | Vous n'avez pas besoin de l'écrire dans vos CREATE TABLE |
+
+> 💡 **Pour 99% des cas** : Ignorez `COLLATE pg_catalog."default"`. PostgreSQL le gère automatiquement et c'est parfait pour la plupart des applications !
+
+---
+
 ## 5️⃣ Fermeture
 
 ```sql
@@ -377,7 +563,7 @@ CREATE TABLE student.note (
     id_note SERIAL PRIMARY KEY,
     id_etudiant INT NOT NULL,
     id_cours INT NOT NULL,
-    valeur NUMERIC(5,2) NOT NULL CHECK (valeur >= 0 AND valeur <= 20),
+    valeur NUMERIC(4,2) NOT NULL CHECK (valeur >= 0 AND valeur <= 20),
     date_note DATE NOT NULL DEFAULT NOW(),
 
     FOREIGN KEY (id_etudiant) REFERENCES student.etudiant(id_etudiant),
@@ -410,7 +596,26 @@ valeur NUMERIC(5,2) NOT NULL CHECK (valeur >= 0 AND valeur <= 20)
 ```
 
 **Décortiquons** :
-- `NUMERIC(5,2)` : Nombre décimal (5 chiffres, 2 décimales) → Ex: 18.75
+- `NUMERIC(5,2)` : Type numérique avec **précision fixe**
+  - **5** = nombre total de chiffres (précision)
+  - **2** = nombre de chiffres après la virgule (échelle)
+  - **3** = nombre de chiffres avant la virgule (5 - 2 = 3)
+  - **Exemples valides** : `18.75`, `20.00`, `0.50`, `15.25`
+  - **Exemples invalides** : `123.45` (6 chiffres), `18.750` (3 décimales)
+  - **Plage possible** : de `-999.99` à `999.99` (mais limité à 0-20 par CHECK)
+
+> 💡 **Pourquoi NUMERIC(5,2) et pas NUMERIC(4,2) ?**
+> 
+> Pour des notes entre **0 et 20**, `NUMERIC(4,2)` serait **suffisant** :
+> - `NUMERIC(4,2)` = 2 chiffres avant + 2 décimales → plage : `-99.99` à `99.99`
+> - `NUMERIC(5,2)` = 3 chiffres avant + 2 décimales → plage : `-999.99` à `999.99`
+> 
+> **Pourquoi utiliser (5,2) alors ?**
+> - ✅ **Flexibilité future** : Si on veut étendre à d'autres systèmes de notation (ex: 0-100)
+> - ✅ **Cohérence** : Même précision pour différents types de valeurs numériques
+> - ✅ **Performance** : La différence de stockage est négligeable
+> 
+> **En pratique** : Les deux fonctionnent pour des notes 0-20, mais `NUMERIC(4,2)` est plus "serré" et adapté au besoin exact.
 - `NOT NULL` : Obligatoire
 - `CHECK (...)` : **Contrainte de validation**
   - La note doit être entre 0 et 20
