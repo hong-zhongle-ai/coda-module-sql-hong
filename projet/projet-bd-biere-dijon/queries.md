@@ -61,3 +61,19 @@ HAVING
     MIN(p.price) >= 6.00
 ORDER BY 
     Prix_Le_Plus_Bas DESC;
+
+5.SELECT 
+    b.nom AS Bar,
+    d.city AS Ville,
+    ROUND(AVG(p.price), 2) AS Panier_Moyen
+FROM 
+    bar b
+JOIN 
+    PRICE p ON b.bar_id = p.bar_id
+JOIN 
+    DISTRICT d ON b.location_id = d.location_id
+GROUP BY 
+    b.bar_id, b.nom, d.city
+ORDER BY 
+    Panier_Moyen DESC
+LIMIT 1;
